@@ -15,6 +15,9 @@ s3_client = boto3.client(
     aws_secret_access_key=settings.R2_SECRET
 )
 
+# Path to your YouTube cookies file
+COOKIES_FILE_PATH = os.path.join(settings.BASE_DIR, "cookies.txt")  # place cookies.txt in your Django project root
+
 @csrf_exempt
 def download_video(request):
     if request.method == "GET":
@@ -26,8 +29,6 @@ def download_video(request):
         if not url:
             return render(request, "download.html", {"error": "URL is required"})
 
-        # Force format to MP3 only
-        format_choice = "mp3"
         temp_filename = str(uuid4())
         output_template = f"{temp_filename}.%(ext)s"
 
@@ -40,6 +41,10 @@ def download_video(request):
                 "preferredquality": "192",
             }],
         }
+
+        # Use cookies if available
+        if os.path.exists(COOKIES_FILE_PATH):
+            ydl_opts["cookiefile"] = COOKIES_FILE_PATH
 
         try:
             # Download song
@@ -55,10 +60,9 @@ def download_video(request):
             # Remove local file
             os.remove(local_file)
 
-            # ✅ Clean up old files (keep only 10)
+            # Clean up old files (keep only 10)
             all_objects = s3_client.list_objects_v2(Bucket=settings.R2_BUCKET).get("Contents", [])
             if len(all_objects) > 10:
-                # Sort by last modified (oldest first)
                 sorted_objects = sorted(all_objects, key=lambda x: x["LastModified"])
                 for old_obj in sorted_objects[:-10]:
                     s3_client.delete_object(Bucket=settings.R2_BUCKET, Key=old_obj["Key"])
@@ -71,6 +75,14 @@ def download_video(request):
                 "file_url": file_url,
                 "file_name": title
             })
+
+        except yt_dlp.utils.DownloadError as e:
+            # Specific handling for YouTube login/cookies errors
+            if "Sign in to confirm you’re not a bot" in str(e):
+                msg = "⚠️ This video requires YouTube login/cookies. Please update cookies.txt."
+            else:
+                msg = str(e)
+            return render(request, "download.html", {"error": msg})
 
         except Exception as e:
             return render(request, "download.html", {"error": str(e)})

@@ -46,4 +46,20 @@ class ShipmentID_Models(models.Model):
         return shipment_code, next_tocken
 
 
+    def save(self, *args, **kwargs):
+        if not self.shipment_id:
+            for _ in range(600):  # retry loop
+                try:
+                    with transaction.atomic():
+                        self.shipment_id, self.tocken = self.generate_shipment_id()
+                        super().save(*args, **kwargs)
+                        return
+                except IntegrityError:
+                    continue
+            raise IntegrityError("Failed to generate unique Shipment ID after retries.")
+        else:
+            super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.shipment_id
 

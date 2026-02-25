@@ -6,7 +6,7 @@ class Token(models.Model):
 
     def __str__(self):
         return self.token
-
+aaaaaaaa Main 
 
 
 from django.db import models, transaction, IntegrityError
